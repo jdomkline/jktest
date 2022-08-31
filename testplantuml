@@ -1,0 +1,81 @@
+@startuml
+autonumber
+actor Client as cli
+participant "Product App μService" as app
+participant "Product Biz μService" as biz
+participant "Product Data μService" as data
+participant "Item Data μService" as item
+participant "Category Data Service" as category
+participant "Item Price Data μService" as price
+participant "Inventory Data μService" as inv
+ 
+activate cli
+cli -> app: [GET] /products / {id}
+ 
+activate app
+app -> biz: [GET] /products / {id}
+ 
+    alt product(s) found
+        activate biz
+        alt If Variant
+            group parallel processing
+             
+                biz -> data: [GET] /products?variantGrp={variantBaseProductId}
+                activate data
+                data --> biz: return all variant product data response
+                deactivate data
+                 
+                biz -> item: [GET] /items?variantGrp={variantBaseProductId}
+                activate item
+                item --> biz: return variants sibling items
+                deactivate item
+                 
+                biz -> category: [GET] /categories?product={variantBaseProductId}
+                activate category
+                category --> biz: return categories response
+                deactivate category
+                 
+            end
+        else If not Variant
+            group parallel processing
+             
+                biz -> data: [GET] /products/{productId}
+                activate data
+                data --> biz: return product response
+                deactivate data
+                 
+                biz -> category: [GET] /categories?product={productId}
+                activate category
+                category --> biz: return categories response
+                deactivate category
+                 
+            end
+            biz -> item: [GET] /items/{itemId}
+            activate item
+            item --> biz: returns item response
+            deactivate item
+        end
+         
+        group Expand Item(s): Parallel Processing
+         
+            biz -> price: [GET] /prices?items={list of item ids}&user={userSegment}
+            activate price
+            price --> biz: get prices response
+            deactivate price
+            biz -> inv: [GET] /inventories?items={list of item ids}
+            activate inv
+            inv --> biz: get inventories response
+            deactivate inv
+         
+        end
+        biz -> biz: aggregate data
+        biz --> app: return aggregate response
+        app --> cli: return aggregate response
+    else product not found
+        biz --[#red]> app: [404] Product not found
+        deactivate biz
+        app --[#red]> cli: [404] Product not found
+        deactivate app
+    end
+deactivate cli
+@enduml
